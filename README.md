@@ -31,10 +31,10 @@ This system supports **Admin** and **Pharmacist** user roles with custom dashboa
 ## 🏗 Tech Stack
 
 **Backend:** Django Rest Framework (DRF)  
-**Frontend (if applicable):** React / HTML / Bootstrap  
+**Frontend ** React
 **Database:** PostgreSQL (Production) / SQLite (Development)  
-**Authentication:** JWT via `djoser`  
-**Others:** Celery (background tasks), Redis (optional)
+**Authentication:** JWT authentication
+**Others:** Celery (background tasks)
 
 ---
 
