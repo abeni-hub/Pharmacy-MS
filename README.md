@@ -71,8 +71,8 @@ Make sure you have the following installed:
 ```
 ### 2️⃣ Clone the Repository
 ```bash
-git clone https://github.com/your-username/pharmacy-management-system.git
-cd pharmacy-management-system/Backend
+git clone https://github.com/abeni-hub/Pharmacy-MS.git
+cd Pharmacy-MS
 ```
 
 ### **3️⃣ Create Virtual Environment**
