@@ -6,4 +6,5 @@ router.register(r'medicines', MedicineViewSet)
 router.register(r'sales', SaleViewSet)
 router.register(r'departments', DepartmentViewSet)
 
+
 urlpatterns = router.urls
