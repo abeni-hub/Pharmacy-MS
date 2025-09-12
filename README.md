@@ -39,7 +39,7 @@ This system supports **Admin** and **Pharmacist** user roles with custom dashboa
 ---
 
 ## 📂 Project Structure
-
+```
 pharmacy-management-system/
 │
 ├── Backend/ # Django backend project
@@ -55,7 +55,7 @@ pharmacy-management-system/
 ├── docs/ # Documentation & API specs
 │
 └── README.md
-
+```
 ```bash
 
 ---
