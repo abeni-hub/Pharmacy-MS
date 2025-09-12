@@ -99,3 +99,14 @@ python manage.py createsuperuser
 ```bash
 python manage.py runserver
 ```
+### Test Medicine
+```
+http://127.0.0.1:8000/api/pharmacy/medicines/
+```
+<img width="1366" height="768" alt="image" src="https://github.com/user-attachments/assets/cf3ac43b-83fd-4b9c-9f6f-b0cfaa8aa3c5" />
+
+### Test Sales
+```bash
+http://127.0.0.1:8000/api/pharmacy/sales/
+```
+<img width="1366" height="768" alt="image" src="https://github.com/user-attachments/assets/8c8a92c0-6aa5-41f5-a915-6a417111e670" />
