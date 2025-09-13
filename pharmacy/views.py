@@ -7,6 +7,8 @@ from django.utils import timezone
 from rest_framework.decorators import action
 from datetime import timedelta
 from rest_framework import status
+from django.db.models import Sum, Count , F , Avg
+from django.utils.timezone import now 
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
@@ -159,3 +161,161 @@ class SaleViewSet(viewsets.ModelViewSet):
         sales = Sale.objects.filter(sold_by_id=user_id)
         serializer = self.get_serializer(sales, many=True)
         return Response(serializer.data)
+
+class DashboardViewSet(viewsets.ViewSet):
+    """
+    Dashboard API: Provides stock, sales, and department summaries
+    """
+
+    @action(detail=False, methods=["get"])
+    def overview(self, request):
+        today = now().date()
+        near_expiry_threshold = today + timedelta(days=30)
+
+        # --- Stock summaries ---
+        total_medicines = Medicine.objects.count()
+        low_stock = Medicine.objects.filter(stock__lte=10, stock__gt=0).count()
+        stock_out = Medicine.objects.filter(stock=0).count()
+        expired = Medicine.objects.filter(expire_date__lt=today).count()
+        near_expiry = Medicine.objects.filter(
+            expire_date__gte=today, expire_date__lte=near_expiry_threshold
+        ).count()
+
+        # --- Sales summaries (use sold_at instead of sale_date) ---
+        today_sales_qty = (
+            Sale.objects.filter(sold_at__date=today).aggregate(total=Sum("quantity"))["total"] or 0
+        )
+        total_sales_qty = Sale.objects.aggregate(total=Sum("quantity"))["total"] or 0
+        revenue_today = (
+            Sale.objects.filter(sold_at__date=today).aggregate(revenue=Sum("total_price"))["revenue"] or 0
+        )
+        total_revenue = Sale.objects.aggregate(revenue=Sum("total_price"))["revenue"] or 0
+
+        # --- Top 5 selling medicines ---
+        top_selling = (
+            Sale.objects.values("medicine__brand_name")
+            .annotate(total_sold=Sum("quantity"))
+            .order_by("-total_sold")[:5]
+        )
+
+        # --- Department stats ---
+        department_stats = (
+            Medicine.objects.values("department__name")
+            .annotate(total=Count("id"))
+            .order_by("department__name")
+        )
+
+        return Response({
+            "stock": {
+                "total_medicines": total_medicines,
+                "low_stock": low_stock,
+                "stock_out": stock_out,
+                "expired": expired,
+                "near_expiry": near_expiry,
+            },
+            "sales": {
+                "today_sales_qty": today_sales_qty,
+                "total_sales_qty": total_sales_qty,
+                "revenue_today": revenue_today,
+                "total_revenue": total_revenue,
+            },
+            "top_selling": list(top_selling),
+            "departments": list(department_stats),
+        })
+    @action(detail=False, methods=["get"])
+    def analytics(self, request):
+        today = now().date()
+        last_week = today - timedelta(days=7)
+        near_expiry_threshold = today + timedelta(days=30)
+
+        # --- Revenue and Transactions ---
+        total_revenue = Sale.objects.aggregate(total=Sum("total_price"))["total"] or 0
+        total_transactions = Sale.objects.count()
+        avg_order_value = (
+            Sale.objects.aggregate(avg=Avg("total_price"))["avg"] or 0
+        )
+        inventory_value = Medicine.objects.aggregate(
+            total=Sum(F("stock") * F("price"))
+        )["total"] or 0
+
+        # --- Sales Trend (last 7 days) ---
+        sales_trend = (
+            Sale.objects.filter(sold_at__date__gte=last_week)
+            .extra(select={"day": "date(sold_at)"})
+            .values("day")
+            .annotate(total_sales=Sum("total_price"))
+            .order_by("day")
+        )
+
+        # --- Inventory by Category (department) ---
+        inventory_by_category = (
+            Medicine.objects.values("department__name")
+            .annotate(value=Sum(F("stock") * F("price")))
+            .order_by("department__name")
+        )
+
+        # --- Top Selling Products ---
+        top_selling = (
+            Sale.objects.values("medicine__brand_name")
+            .annotate(total_sold=Sum("quantity"))
+            .order_by("-total_sold")[:5]
+        )
+
+        # --- Stock Alerts ---
+        low_stock = Medicine.objects.filter(stock__lte=10, stock__gt=0)
+        stock_out = Medicine.objects.filter(stock=0)
+        near_expiry = Medicine.objects.filter(
+            expire_date__gte=today, expire_date__lte=near_expiry_threshold
+        )
+
+        # --- Weekly Summary ---
+        week_sales = (
+            Sale.objects.filter(sold_at__date__gte=last_week)
+            .aggregate(total=Sum("total_price"))
+        )["total"] or 0
+        week_transactions = (
+            Sale.objects.filter(sold_at__date__gte=last_week).count()
+        )
+
+        # --- Inventory Health ---
+        total_products = Medicine.objects.count()
+
+        # --- Performance Metrics (dummy calc, adjust formula if needed) ---
+        profit_margin = 24.5  # Example: (Revenue - Cost) / Revenue
+        inventory_turnover = (
+            total_revenue / inventory_value if inventory_value > 0 else 0
+        )
+        customer_satisfaction = 94.2  # Example static value
+
+        return Response({
+            "summary": {
+                "total_revenue": total_revenue,
+                "total_transactions": total_transactions,
+                "avg_order_value": avg_order_value,
+                "inventory_value": inventory_value,
+            },
+            "sales_trend": list(sales_trend),
+            "inventory_by_category": list(inventory_by_category),
+            "top_selling": list(top_selling),
+            "stock_alerts": {
+                "low_stock": list(low_stock.values("brand_name", "stock")),
+                "stock_out": list(stock_out.values("brand_name")),
+                "near_expiry": list(near_expiry.values("brand_name", "expire_date")),
+            },
+            "weekly_summary": {
+                "week_sales": week_sales,
+                "transactions": week_transactions,
+                "new_customers": 28,  # Replace if you have customer model
+            },
+            "inventory_health": {
+                "total_products": total_products,
+                "low_stock": low_stock.count(),
+                "near_expiry": near_expiry.count(),
+                "stock_out": stock_out.count(),
+            },
+            "performance_metrics": {
+                "profit_margin": profit_margin,
+                "inventory_turnover": round(inventory_turnover, 2),
+                "customer_satisfaction": customer_satisfaction,
+            },
+        })
