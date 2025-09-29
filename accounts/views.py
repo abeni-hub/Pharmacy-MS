@@ -8,7 +8,8 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken    
 from django.contrib.auth import get_user_model
 from rest_framework import permissions
-
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .serializers import CustomTokenObtainPairSerializer
 
 User = get_user_model()
 
@@ -35,20 +36,20 @@ class RegisterView(generics.CreateAPIView):
 class UserListCreateView(generics.ListCreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAdminUser]  # only admins can view all users or create
+    #permission_classes = [permissions.IsAdminUser]  # only admins can view all users or create
 
 
 # --- Retrieve, Update, Delete a User (Admin only) ---
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAdminUser]
+    # permission_classes = [permissions.IsAdminUser]
 
 
 # --- Logged-in User Profile (Self-service) ---
 class UserMeView(generics.RetrieveUpdateAPIView):
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    #permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
         return self.request.user
@@ -57,3 +58,6 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     # permission_classes = [IsAdminUser]  # only admins manage users
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
