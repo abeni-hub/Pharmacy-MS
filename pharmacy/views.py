@@ -1,7 +1,7 @@
 from rest_framework import viewsets, permissions, filters
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Medicine, Sale, Department
-from .serializers import MedicineSerializer, SaleSerializer, DepartmentSerializer
+from .models import Medicine, Sale, Department , Refill
+from .serializers import MedicineSerializer, SaleSerializer, DepartmentSerializer , RefillSerializer
 from rest_framework.response import Response
 from django.utils import timezone
 from rest_framework.decorators import action
@@ -97,6 +97,13 @@ class MedicineViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+class RefillViewSet(viewsets.ModelViewSet):
+    queryset = Refill.objects.all().order_by("-refill_date")
+    serializer_class = RefillSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 class SaleViewSet(viewsets.ModelViewSet):
     queryset = Sale.objects.all()
     serializer_class = SaleSerializer

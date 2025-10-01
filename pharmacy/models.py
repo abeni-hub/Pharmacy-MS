@@ -60,3 +60,18 @@ class Sale(models.Model):
 
     def __str__(self):
         return f"Sale of {self.medicine.brand_name} ({self.quantity})"
+
+class Refill(models.Model):
+    medicine = models.ForeignKey(Medicine, on_delete=models.CASCADE, related_name="refills")
+    batch_no = models.CharField(max_length=100)
+    refill_date = models.DateField(default=timezone.localdate)
+    end_date = models.DateField(help_text="Expiry date of this batch")
+    price = models.DecimalField(max_digits=12, decimal_places=2)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
+    )
+
+    def __str__(self):
+        return f"Refill for {self.medicine.brand_name} ({self.batch_no})"

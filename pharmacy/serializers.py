@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Medicine, Sale, Department
+from .models import Medicine, Sale, Department , Refill
 
 class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
@@ -29,3 +29,21 @@ class SaleSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         validated_data['sold_by'] = request.user
         return super().create(validated_data)
+
+class RefillSerializer(serializers.ModelSerializer):
+    medicine_name = serializers.CharField(source="medicine.brand_name", read_only=True)
+
+    class Meta:
+        model = Refill
+        fields = [
+            "id",
+            "medicine",
+            "medicine_name",
+            "batch_no",
+            "refill_date",
+            "end_date",
+            "price",
+            "created_at",
+            "created_by",
+        ]
+        read_only_fields = ["id", "created_at", "created_by"]
