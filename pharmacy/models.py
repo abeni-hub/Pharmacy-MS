@@ -4,9 +4,11 @@ from django.utils import timezone
 from django.utils.timezone import now
 from decimal import Decimal
 from django.core.validators import MinValueValidator
+import uuid
 
 
 class Department(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code = models.CharField(max_length=10, unique=True)
     name = models.CharField(max_length=255)
 
@@ -14,6 +16,7 @@ class Department(models.Model):
         return f"{self.code} - {self.name}"
 
 class Medicine(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code_no = models.CharField(max_length=50, unique=True)
     brand_name = models.CharField(max_length=255)
     generic_name = models.CharField(max_length=255, blank=True, null=True)
@@ -44,6 +47,7 @@ class Medicine(models.Model):
         return f"{self.brand_name} ({self.code_no})"
 
 class Sale(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     medicine = models.ForeignKey(Medicine, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
     total_price = models.DecimalField(max_digits=12, decimal_places=2)
@@ -64,6 +68,7 @@ class Sale(models.Model):
         return f"Sale of {self.medicine.brand_name} ({self.quantity})"
 
 class Refill(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     medicine = models.ForeignKey(
         "Medicine", on_delete=models.CASCADE, related_name="refills"
     )
