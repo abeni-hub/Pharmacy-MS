@@ -1,8 +1,10 @@
 from django.db import models
 from django.conf import settings
 from django.utils import timezone
+from django.utils.timezone import now
 from decimal import Decimal
 from django.core.validators import MinValueValidator
+
 
 class Department(models.Model):
     code = models.CharField(max_length=10, unique=True)
@@ -62,16 +64,24 @@ class Sale(models.Model):
         return f"Sale of {self.medicine.brand_name} ({self.quantity})"
 
 class Refill(models.Model):
-    medicine = models.ForeignKey(Medicine, on_delete=models.CASCADE, related_name="refills")
-    batch_no = models.CharField(max_length=100)
-    refill_date = models.DateField(default=timezone.localdate)
-    end_date = models.DateField(help_text="Expiry date of this batch")
-    price = models.DecimalField(max_digits=12, decimal_places=2)
+    medicine = models.ForeignKey(
+        "Medicine", on_delete=models.CASCADE, related_name="refills"
+    )
+    department = models.ForeignKey("Department", on_delete=models.SET_NULL, null=True)
 
+    batch_no = models.CharField(max_length=100)
+    manufacture_date = models.DateField()
+    expire_date = models.DateField()
+    price = models.DecimalField(
+        max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.00"))]
+    )
+    quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+
+    refill_date = models.DateField(default=now)  # ✅ returns date object, no error
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
     )
 
     def __str__(self):
-        return f"Refill for {self.medicine.brand_name} ({self.batch_no})"
+        return f"Refill for {self.medicine.brand_name} (Batch {self.batch_no})"

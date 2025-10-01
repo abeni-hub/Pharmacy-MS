@@ -32,17 +32,22 @@ class SaleSerializer(serializers.ModelSerializer):
 
 class RefillSerializer(serializers.ModelSerializer):
     medicine_name = serializers.CharField(source="medicine.brand_name", read_only=True)
-
+    department_name = serializers.CharField(source="department.name", read_only=True)
+    created_by_username = serializers.CharField(source="created_by.username", read_only=True)
     class Meta:
         model = Refill
         fields = [
             "id",
             "medicine",
             "medicine_name",
+            "department",
+            "department_name",
             "batch_no",
-            "refill_date",
-            "end_date",
+            "manufacture_date",
+            "expire_date",
             "price",
+            "quantity",
+            "refill_date",
             "created_at",
             "created_by",
         ]

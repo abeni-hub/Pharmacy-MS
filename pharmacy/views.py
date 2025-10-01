@@ -103,7 +103,14 @@ class RefillViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        # Automatically set the creator and update medicine stock
+        refill = serializer.save(created_by=self.request.user)
+
+        # Update medicine stock when refilled
+        medicine = refill.medicine
+        medicine.stock += refill.quantity
+        medicine.price = refill.price  # Optionally update current price
+        medicine.save()
 class SaleViewSet(viewsets.ModelViewSet):
     queryset = Sale.objects.all()
     serializer_class = SaleSerializer
