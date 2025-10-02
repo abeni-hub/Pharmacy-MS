@@ -70,8 +70,8 @@ class Sale(models.Model):
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     def calculate_total(self):
-        subtotal = sum(item.quantity * item.price for item in self.items.all())
-        discount_factor = (100 - float(self.discount_percentage)) / 100
+        subtotal = sum(Decimal(item.quantity) * item.price for item in self.items.all())
+        discount_factor = (Decimal(100) - self.discount_percentage) / Decimal(100)
         return subtotal * discount_factor
 
     def save(self, *args, **kwargs):
