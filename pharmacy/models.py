@@ -48,26 +48,56 @@ class Medicine(models.Model):
 
 class Sale(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    medicine = models.ForeignKey(Medicine, on_delete=models.CASCADE)
-    quantity = models.PositiveIntegerField()
-    total_price = models.DecimalField(max_digits=12, decimal_places=2)
-    sold_at = models.DateTimeField(auto_now_add=True)
-    sold_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    customer_name = models.CharField(max_length=255, blank=True, null=True)
+    customer_phone = models.CharField(max_length=20, blank=True, null=True)
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
-    def save(self, *args, **kwargs):
-        # reduce stock
-        if self.pk is None:  # new sale
-            if self.medicine.stock < self.quantity:
-                raise ValueError("Not enough stock")
-            self.medicine.stock -= self.quantity
-            self.medicine.save()
-            self.total_price = self.medicine.price * self.quantity
-        super().save(*args, **kwargs)
+    sale_date = models.DateTimeField(default=timezone.now)
+    sold_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
-        return f"Sale of {self.medicine.brand_name} ({self.quantity})"
+        return f"Sale #{self.id} - {self.sale_date.strftime('%Y-%m-%d')}"
+
+
+class SaleItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="items")
+    medicine = models.ForeignKey(Medicine, on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField()
+    price = models.DecimalField(max_digits=12, decimal_places=2)  # snapshot of price at sale time
+
+    @property
+    def total_price(self):
+        return self.price * self.quantity
+
+
+# class SaleItem(models.Model):
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     sale = models.ForeignKey(Sale, related_name="items", on_delete=models.CASCADE)
+#     medicine = models.ForeignKey("Medicine", on_delete=models.CASCADE)
+#     quantity = models.PositiveIntegerField()
+#     price = models.DecimalField(max_digits=12, decimal_places=2)  # snapshot of medicine price
+#     subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+#     def save(self, *args, **kwargs):
+#         if self.pk is None:  # new item
+#             if self.medicine.stock < self.quantity:
+#                 raise ValueError("Not enough stock")
+#             self.medicine.stock -= self.quantity
+#             self.medicine.save()
+
+#         self.subtotal = self.price * self.quantity
+#         super().save(*args, **kwargs)
+
+#     def __str__(self):
+#         return f"{self.medicine.brand_name} x {self.quantity}"
+def today():
+    return now().date()
+
 
 class Refill(models.Model):
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     medicine = models.ForeignKey(
         "Medicine", on_delete=models.CASCADE, related_name="refills"
@@ -82,7 +112,7 @@ class Refill(models.Model):
     )
     quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
 
-    refill_date = models.DateField(default=now)  # ✅ returns date object, no error
+    refill_date = models.DateField(default=today)  # ✅ returns date object, no error
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True

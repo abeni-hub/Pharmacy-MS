@@ -112,70 +112,33 @@ class RefillViewSet(viewsets.ModelViewSet):
         medicine.price = refill.price  # Optionally update current price
         medicine.save()
 class SaleViewSet(viewsets.ModelViewSet):
-    queryset = Sale.objects.all()
+    queryset = Sale.objects.all().prefetch_related("items")
     serializer_class = SaleSerializer
     permission_classes = [permissions.IsAuthenticated]
-    
+
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['department']
-    search_fields = ['code_no','brand_name','generic_name']
-    ordering_fields = ['expire_date','price','stock']
+    filterset_fields = ['sold_by']
+    search_fields = ['customer_name', 'customer_phone']
+    ordering_fields = ['sale_date', 'total_amount']
 
-    def create(self, request, *args, **kwargs):
-        # Handle bulk create for Sales
-        if isinstance(request.data, list):
-            serializer = self.get_serializer(data=request.data, many=True)
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return super().create(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        # Handle bulk update for Sales
-        if isinstance(request.data, list):
-            updated = []
-            for item in request.data:
-                instance = Sale.objects.get(pk=item.get("id"))
-                serializer = self.get_serializer(instance, data=item, partial=True)
-                serializer.is_valid(raise_exception=True)
-                serializer.save()
-                updated.append(serializer.data)
-            return Response(updated, status=status.HTTP_200_OK)
-        return super().update(request, *args, **kwargs)
-
-    @action(detail=False, methods=['get'])
-    def total_sales(self, request):
-        total = sum(s.total_price for s in Sale.objects.all())
-        return Response({"total_sales": total})
-
-    # Sales today
-    @action(detail=False, methods=['get'])
-    def sales_today(self, request):
-        today = timezone.now().date()
-        sales = Sale.objects.filter(sale_date__date=today)
-        serializer = self.get_serializer(sales, many=True)
-        return Response(serializer.data)
-
-    # Sales by medicine ID
-    @action(detail=False, methods=['get'])
-    def by_medicine(self, request):
-        medicine_id = request.query_params.get('medicine_id')
-        if not medicine_id:
-            return Response({"error": "medicine_id query param is required"}, status=400)
-        sales = Sale.objects.filter(medicine_id=medicine_id)
-        serializer = self.get_serializer(sales, many=True)
-        return Response(serializer.data)
-
-    # Sales by user ID
-    @action(detail=False, methods=['get'])
-    def by_user(self, request):
-        user_id = request.query_params.get('user_id')
-        if not user_id:
-            return Response({"error": "user_id query param is required"}, status=400)
-        sales = Sale.objects.filter(sold_by_id=user_id)
-        serializer = self.get_serializer(sales, many=True)
-        return Response(serializer.data)
-
+    @action(detail=True, methods=["get"])
+    def receipt(self, request, pk=None):
+        """Generate a receipt for a sale"""
+        sale = self.get_object()
+        serializer = self.get_serializer(sale)
+        return Response({
+            "receipt": {
+                "sale_id": sale.id,
+                "customer": sale.customer_name,
+                "phone": sale.customer_phone,
+                "sold_by": sale.sold_by.username if sale.sold_by else None,
+                "date": sale.sale_date,
+                "discount": str(sale.discount),
+                "total": str(sale.total_amount),
+                "items": serializer.data["items"],
+            }
+        })
+    
 class DashboardViewSet(viewsets.ViewSet):
     """
     Dashboard API: Provides stock, sales, and department summaries

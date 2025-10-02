@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Medicine, Sale, Department , Refill
+from .models import Medicine, Sale, Department , Refill , SaleItem
 
 class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
@@ -19,17 +19,48 @@ class MedicineSerializer(serializers.ModelSerializer):
     def get_is_expired(self, obj): return obj.is_expired()
     def get_is_nearly_expired(self, obj): return obj.is_nearly_expired()
 
+class SaleItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SaleItem
+        fields = ["id", "medicine", "quantity", "price", "subtotal"]
+
+class SaleItemSerializer(serializers.ModelSerializer):
+    medicine_name = serializers.CharField(source="medicine.brand_name", read_only=True)
+
+    class Meta:
+        model = SaleItem
+        fields = ["id", "medicine", "medicine_name", "quantity", "price", "total_price"]
+        read_only_fields = ["total_price"]
+
+
 class SaleSerializer(serializers.ModelSerializer):
+    items = SaleItemSerializer(many=True)
+    sold_by_name = serializers.CharField(source="sold_by.username", read_only=True)
+
     class Meta:
         model = Sale
-        fields = '__all__'
-        read_only_fields = ['total_price', 'sold_at', 'sold_by']
+        fields = [
+            "id", "customer_name", "customer_phone", "discount",
+            "total_amount", "sale_date", "sold_by", "sold_by_name", "items"
+        ]
 
     def create(self, validated_data):
-        request = self.context.get('request')
-        validated_data['sold_by'] = request.user
-        return super().create(validated_data)
+        items_data = validated_data.pop("items")
+        sale = Sale.objects.create(**validated_data)
 
+        total = 0
+        for item in items_data:
+            medicine = item["medicine"]
+            quantity = item["quantity"]
+            price = item["price"]
+
+            SaleItem.objects.create(sale=sale, **item)
+            total += price * quantity
+
+        # apply discount
+        sale.total_amount = total - sale.discount
+        sale.save()
+        return sale
 class RefillSerializer(serializers.ModelSerializer):
     medicine_name = serializers.CharField(source="medicine.brand_name", read_only=True)
     department_name = serializers.CharField(source="department.name", read_only=True)
@@ -50,5 +81,6 @@ class RefillSerializer(serializers.ModelSerializer):
             "refill_date",
             "created_at",
             "created_by",
+            "created_by_username",
         ]
         read_only_fields = ["id", "created_at", "created_by"]
