@@ -1,7 +1,7 @@
 from rest_framework import viewsets, permissions, filters
 from django_filters.rest_framework import DjangoFilterBackend
-from .models import Medicine, Sale, Department , Refill
-from .serializers import MedicineSerializer, SaleSerializer, DepartmentSerializer , RefillSerializer
+from .models import Medicine, Sale, Department , Refill , SaleItem
+from .serializers import MedicineSerializer, SaleSerializer, DepartmentSerializer , RefillSerializer , SaleItemSerializer
 from rest_framework.response import Response
 from django.utils import timezone
 from rest_framework.decorators import action
@@ -111,6 +111,7 @@ class RefillViewSet(viewsets.ModelViewSet):
         medicine.stock += refill.quantity
         medicine.price = refill.price  # Optionally update current price
         medicine.save()
+
 class SaleViewSet(viewsets.ModelViewSet):
     queryset = Sale.objects.all().prefetch_related("items")
     serializer_class = SaleSerializer
@@ -158,19 +159,24 @@ class DashboardViewSet(viewsets.ViewSet):
             expire_date__gte=today, expire_date__lte=near_expiry_threshold
         ).count()
 
-        # --- Sales summaries (use sold_at instead of sale_date) ---
+        # --- Sales summaries ---
         today_sales_qty = (
-            Sale.objects.filter(sold_at__date=today).aggregate(total=Sum("quantity"))["total"] or 0
+            SaleItem.objects.filter(sale__sale_date__date=today)
+            .aggregate(total=Sum("quantity"))["total"] or 0
         )
-        total_sales_qty = Sale.objects.aggregate(total=Sum("quantity"))["total"] or 0
+        total_sales_qty = SaleItem.objects.aggregate(total=Sum("quantity"))["total"] or 0
+
         revenue_today = (
-            Sale.objects.filter(sold_at__date=today).aggregate(revenue=Sum("total_price"))["revenue"] or 0
+            Sale.objects.filter(sale_date__date=today)
+            .aggregate(revenue=Sum("total_amount"))["revenue"] or 0
         )
-        total_revenue = Sale.objects.aggregate(revenue=Sum("total_price"))["revenue"] or 0
+        total_revenue = (
+            Sale.objects.aggregate(revenue=Sum("total_amount"))["revenue"] or 0
+        )
 
         # --- Top 5 selling medicines ---
         top_selling = (
-            Sale.objects.values("medicine__brand_name")
+            SaleItem.objects.values("medicine__brand_name")
             .annotate(total_sold=Sum("quantity"))
             .order_by("-total_sold")[:5]
         )
@@ -199,6 +205,7 @@ class DashboardViewSet(viewsets.ViewSet):
             "top_selling": list(top_selling),
             "departments": list(department_stats),
         })
+
     @action(detail=False, methods=["get"])
     def analytics(self, request):
         today = now().date()
@@ -206,10 +213,10 @@ class DashboardViewSet(viewsets.ViewSet):
         near_expiry_threshold = today + timedelta(days=30)
 
         # --- Revenue and Transactions ---
-        total_revenue = Sale.objects.aggregate(total=Sum("total_price"))["total"] or 0
+        total_revenue = Sale.objects.aggregate(total=Sum("total_amount"))["total"] or 0
         total_transactions = Sale.objects.count()
         avg_order_value = (
-            Sale.objects.aggregate(avg=Avg("total_price"))["avg"] or 0
+            Sale.objects.aggregate(avg=Avg("total_amount"))["avg"] or 0
         )
         inventory_value = Medicine.objects.aggregate(
             total=Sum(F("stock") * F("price"))
@@ -217,10 +224,10 @@ class DashboardViewSet(viewsets.ViewSet):
 
         # --- Sales Trend (last 7 days) ---
         sales_trend = (
-            Sale.objects.filter(sold_at__date__gte=last_week)
-            .extra(select={"day": "date(sold_at)"})
+            Sale.objects.filter(sale_date__date__gte=last_week)
+            .extra(select={"day": "date(sale_date)"})
             .values("day")
-            .annotate(total_sales=Sum("total_price"))
+            .annotate(total_sales=Sum("total_amount"))
             .order_by("day")
         )
 
@@ -233,7 +240,7 @@ class DashboardViewSet(viewsets.ViewSet):
 
         # --- Top Selling Products ---
         top_selling = (
-            Sale.objects.values("medicine__brand_name")
+            SaleItem.objects.values("medicine__brand_name")
             .annotate(total_sold=Sum("quantity"))
             .order_by("-total_sold")[:5]
         )
@@ -247,18 +254,18 @@ class DashboardViewSet(viewsets.ViewSet):
 
         # --- Weekly Summary ---
         week_sales = (
-            Sale.objects.filter(sold_at__date__gte=last_week)
-            .aggregate(total=Sum("total_price"))
+            Sale.objects.filter(sale_date__date__gte=last_week)
+            .aggregate(total=Sum("total_amount"))
         )["total"] or 0
         week_transactions = (
-            Sale.objects.filter(sold_at__date__gte=last_week).count()
+            Sale.objects.filter(sale_date__date__gte=last_week).count()
         )
 
         # --- Inventory Health ---
         total_products = Medicine.objects.count()
 
-        # --- Performance Metrics (dummy calc, adjust formula if needed) ---
-        profit_margin = 24.5  # Example: (Revenue - Cost) / Revenue
+        # --- Performance Metrics (example) ---
+        profit_margin = 24.5  # Placeholder
         inventory_turnover = (
             total_revenue / inventory_value if inventory_value > 0 else 0
         )
@@ -282,7 +289,7 @@ class DashboardViewSet(viewsets.ViewSet):
             "weekly_summary": {
                 "week_sales": week_sales,
                 "transactions": week_transactions,
-                "new_customers": 28,  # Replace if you have customer model
+                "new_customers": 28,  # Replace if customer model exists
             },
             "inventory_health": {
                 "total_products": total_products,
