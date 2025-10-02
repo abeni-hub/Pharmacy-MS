@@ -3,7 +3,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.timezone import now
 from decimal import Decimal
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator , MaxValueValidator
 import uuid
 
 
@@ -56,17 +56,30 @@ class Medicine(models.Model):
         return f"{self.brand_name} ({self.code_no})"
 class Sale(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sold_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     customer_name = models.CharField(max_length=255, blank=True, null=True)
     customer_phone = models.CharField(max_length=20, blank=True, null=True)
-    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    sale_date = models.DateTimeField(auto_now_add=True)
+
+    # 🔹 discount as percentage (0–100)
+    discount_percentage = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)]
+    )
+
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
-    sale_date = models.DateTimeField(default=timezone.now)
-    sold_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    def calculate_total(self):
+        subtotal = sum(item.quantity * item.price for item in self.items.all())
+        discount_factor = (100 - float(self.discount_percentage)) / 100
+        return subtotal * discount_factor
+
+    def save(self, *args, **kwargs):
+        self.total_amount = self.calculate_total()
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Sale #{self.id} - {self.sale_date.strftime('%Y-%m-%d')}"
-
+        return f"Sale {self.id} - {self.customer_name or 'Walk-in Customer'}"
 
 class SaleItem(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

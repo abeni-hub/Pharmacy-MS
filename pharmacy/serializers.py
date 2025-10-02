@@ -44,13 +44,12 @@ class SaleItemSerializer(serializers.ModelSerializer):
 
 class SaleSerializer(serializers.ModelSerializer):
     items = SaleItemSerializer(many=True)
-    sold_by_name = serializers.CharField(source="sold_by.username", read_only=True)
 
     class Meta:
         model = Sale
         fields = [
-            "id", "customer_name", "customer_phone", "discount",
-            "total_amount", "sale_date", "sold_by", "sold_by_name", "items"
+            "id", "sold_by", "customer_name", "customer_phone",
+            "sale_date", "discount_percentage", "total_amount", "items"
         ]
 
     def create(self, validated_data):
