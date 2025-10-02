@@ -23,11 +23,15 @@ class Medicine(models.Model):
     batch_no = models.CharField(max_length=100, blank=True, null=True)
     manufacture_date = models.DateField()
     expire_date = models.DateField()
-    price = models.DecimalField(max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal('0.00'))])
+    price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.00"))]
+    )
     stock = models.IntegerField(default=0)
     low_stock_threshold = models.IntegerField(default=10)
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True)
-    attachment = models.FileField(upload_to='medicine_attachments/', blank=True, null=True)
+    department = models.ForeignKey("Department", on_delete=models.SET_NULL, null=True)
+    attachment = models.FileField(upload_to="medicine_attachments/", blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -43,9 +47,13 @@ class Medicine(models.Model):
         delta = (self.expire_date - timezone.localdate()).days
         return 0 <= delta <= days
 
+    @property
+    def refill_count(self):
+        # Count how many times this medicine has been refilled
+        return self.refills.count()
+
     def __str__(self):
         return f"{self.brand_name} ({self.code_no})"
-
 class Sale(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     customer_name = models.CharField(max_length=255, blank=True, null=True)
@@ -70,6 +78,7 @@ class SaleItem(models.Model):
     @property
     def total_price(self):
         return self.price * self.quantity
+        
 
 
 # class SaleItem(models.Model):

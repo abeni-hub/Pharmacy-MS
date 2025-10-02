@@ -10,15 +10,24 @@ class MedicineSerializer(serializers.ModelSerializer):
     is_out_of_stock = serializers.SerializerMethodField()
     is_expired = serializers.SerializerMethodField()
     is_nearly_expired = serializers.SerializerMethodField()
+    refill_count = serializers.SerializerMethodField()   # ✅ added here
 
     class Meta:
         model = Medicine
         fields = '__all__'
 
-    def get_is_out_of_stock(self, obj): return obj.is_out_of_stock()
-    def get_is_expired(self, obj): return obj.is_expired()
-    def get_is_nearly_expired(self, obj): return obj.is_nearly_expired()
+    def get_is_out_of_stock(self, obj):
+        return obj.is_out_of_stock()
 
+    def get_is_expired(self, obj):
+        return obj.is_expired()
+
+    def get_is_nearly_expired(self, obj):
+        return obj.is_nearly_expired()
+    
+    def get_refill_count(self, obj):   # ✅ this now calls your property
+        return obj.refill_count
+    
 class SaleItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = SaleItem
