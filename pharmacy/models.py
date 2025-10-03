@@ -56,26 +56,41 @@ class Medicine(models.Model):
         return f"{self.brand_name} ({self.code_no})"
 class Sale(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    sold_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    sold_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
+    )
     customer_name = models.CharField(max_length=255, blank=True, null=True)
     customer_phone = models.CharField(max_length=20, blank=True, null=True)
     sale_date = models.DateTimeField(auto_now_add=True)
 
     # 🔹 discount as percentage (0–100)
     discount_percentage = models.DecimalField(
-        max_digits=5, decimal_places=2, default=0,
-        validators=[MinValueValidator(0), MaxValueValidator(100)]
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
     )
 
-    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    base_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)       # before discount
+    discounted_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0) # discount value
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)      # after discount
 
-    def calculate_total(self):
+    discounted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="discounted_sales",
+    )
+
+    def calculate_totals(self):
         subtotal = sum(Decimal(item.quantity) * item.price for item in self.items.all())
-        discount_factor = (Decimal(100) - self.discount_percentage) / Decimal(100)
-        return subtotal * discount_factor
+        self.base_price = subtotal
+        self.discounted_amount = (subtotal * self.discount_percentage) / Decimal(100)
+        self.total_amount = subtotal - self.discounted_amount
 
     def save(self, *args, **kwargs):
-        self.total_amount = self.calculate_total()
+        self.calculate_totals()
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -91,6 +106,9 @@ class SaleItem(models.Model):
     @property
     def total_price(self):
         return self.price * self.quantity
+    
+    def __str__(self):
+        return f"{self.medicine.brand_name} x {self.quantity}"
         
 
 

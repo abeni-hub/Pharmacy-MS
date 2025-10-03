@@ -117,29 +117,39 @@ class SaleViewSet(viewsets.ModelViewSet):
     serializer_class = SaleSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['sold_by']
-    search_fields = ['customer_name', 'customer_phone']
-    ordering_fields = ['sale_date', 'total_amount']
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["customer_name", "customer_phone"]
+    ordering_fields = ["sale_date", "total_amount"]
+
+    def perform_create(self, serializer):
+        serializer.save(sold_by=self.request.user)
 
     @action(detail=True, methods=["get"])
     def receipt(self, request, pk=None):
-        """Generate a receipt for a sale"""
+        """Generate a detailed receipt for a sale"""
         sale = self.get_object()
         serializer = self.get_serializer(sale)
+
+        subtotal = sum(item["quantity"] * float(item["price"]) for item in serializer.data["items"])
+        discount_amount = subtotal - float(sale.total_amount)
+
         return Response({
             "receipt": {
                 "sale_id": sale.id,
-                "customer": sale.customer_name,
-                "phone": sale.customer_phone,
+                "customer": sale.customer_name or "Walk-in Customer",
+                "phone": sale.customer_phone or "-",
                 "sold_by": sale.sold_by.username if sale.sold_by else None,
                 "date": sale.sale_date,
-                "discount": str(sale.discount),
-                "total": str(sale.total_amount),
+                "base_price": str(subtotal),
+                "discount_percentage": str(sale.discount_percentage),
+                "discount_amount": str(discount_amount),
+                "discounted_by": sale.sold_by.username if sale.sold_by else None,
+                "final_total": str(sale.total_amount),
                 "items": serializer.data["items"],
             }
         })
-    
+
+
 class DashboardViewSet(viewsets.ViewSet):
     """
     Dashboard API: Provides stock, sales, and department summaries
@@ -215,9 +225,7 @@ class DashboardViewSet(viewsets.ViewSet):
         # --- Revenue and Transactions ---
         total_revenue = Sale.objects.aggregate(total=Sum("total_amount"))["total"] or 0
         total_transactions = Sale.objects.count()
-        avg_order_value = (
-            Sale.objects.aggregate(avg=Avg("total_amount"))["avg"] or 0
-        )
+        avg_order_value = Sale.objects.aggregate(avg=Avg("total_amount"))["avg"] or 0
         inventory_value = Medicine.objects.aggregate(
             total=Sum(F("stock") * F("price"))
         )["total"] or 0
@@ -231,7 +239,7 @@ class DashboardViewSet(viewsets.ViewSet):
             .order_by("day")
         )
 
-        # --- Inventory by Category (department) ---
+        # --- Inventory by Category ---
         inventory_by_category = (
             Medicine.objects.values("department__name")
             .annotate(value=Sum(F("stock") * F("price")))
@@ -257,19 +265,15 @@ class DashboardViewSet(viewsets.ViewSet):
             Sale.objects.filter(sale_date__date__gte=last_week)
             .aggregate(total=Sum("total_amount"))
         )["total"] or 0
-        week_transactions = (
-            Sale.objects.filter(sale_date__date__gte=last_week).count()
-        )
+        week_transactions = Sale.objects.filter(sale_date__date__gte=last_week).count()
 
         # --- Inventory Health ---
         total_products = Medicine.objects.count()
 
-        # --- Performance Metrics (example) ---
-        profit_margin = 24.5  # Placeholder
-        inventory_turnover = (
-            total_revenue / inventory_value if inventory_value > 0 else 0
-        )
-        customer_satisfaction = 94.2  # Example static value
+        # --- Performance Metrics ---
+        profit_margin = 24.5  # Example static placeholder
+        inventory_turnover = total_revenue / inventory_value if inventory_value > 0 else 0
+        customer_satisfaction = 94.2  # Example static placeholder
 
         return Response({
             "summary": {
