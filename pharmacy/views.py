@@ -16,6 +16,12 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['name', 'manager', 'location']  # ✅ customize fields as per your model
+    search_fields = ['name', 'description']             # ✅ searchable fields
+    ordering_fields = ['name', 'created_at', 'id']      # ✅ sortable fields
+    ordering = ['-id']                                  # default order
+    pagination_class = CustomPagination
     
 class MedicineViewSet(viewsets.ModelViewSet):
     queryset = Medicine.objects.all()
