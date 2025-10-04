@@ -9,6 +9,7 @@ from datetime import timedelta
 from rest_framework import status
 from django.db.models import Sum, Count , F , Avg
 from django.utils.timezone import now 
+from .pagination import CustomPagination
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
@@ -19,6 +20,7 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 class MedicineViewSet(viewsets.ModelViewSet):
     queryset = Medicine.objects.all()
     serializer_class = MedicineSerializer
+    pagination_class = CustomPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['department']
     search_fields = ['code_no','brand_name','generic_name']
@@ -100,6 +102,7 @@ class MedicineViewSet(viewsets.ModelViewSet):
 class RefillViewSet(viewsets.ModelViewSet):
     queryset = Refill.objects.all().order_by("-refill_date")
     serializer_class = RefillSerializer
+    pagination_class = CustomPagination
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
@@ -115,6 +118,7 @@ class RefillViewSet(viewsets.ModelViewSet):
 class SaleViewSet(viewsets.ModelViewSet):
     queryset = Sale.objects.all().prefetch_related("items")
     serializer_class = SaleSerializer
+    pagination_class = CustomPagination
     permission_classes = [permissions.IsAuthenticated]
 
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
