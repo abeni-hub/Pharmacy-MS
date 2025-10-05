@@ -17,8 +17,8 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     serializer_class = DepartmentSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['name', 'manager', 'location']  # ✅ customize fields as per your model
-    search_fields = ['name', 'description']             # ✅ searchable fields
+    filterset_fields = ['code','name']  # ✅ customize fields as per your model
+    search_fields = ['code','name']             # ✅ searchable fields
     ordering_fields = ['name', 'created_at', 'id']      # ✅ sortable fields
     ordering = ['-id']                                  # default order
     pagination_class = CustomPagination
