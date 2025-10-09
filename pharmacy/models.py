@@ -3,7 +3,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.timezone import now
 from decimal import Decimal
-from django.core.validators import MinValueValidator , MaxValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator
 import uuid
 
 
@@ -15,7 +15,28 @@ class Department(models.Model):
     def __str__(self):
         return f"{self.code} - {self.name}"
 
+
 class Medicine(models.Model):
+    class UnitChoices(models.TextChoices):
+        PK = "Pk", "Pk"
+        BOTTLE = "Bottle", "Bottle"
+        SACHET = "Sachet", "Sachet"
+        AMPULE = "Ampule", "Ampule"
+        VIAL = "Vial", "Vial"
+        TIN = "Tin", "Tin"
+        STRIP = "Strip", "Strip"
+        TUBE = "Tube", "Tube"
+        BOX = "Box", "Box"
+        COSMETICS = "Cosmetics", "Cosmetics"
+        TEN_X_100 = "10 x 100", "10 x 100"
+        OF_10 = "Of 10", "Of 10"
+        OF_20 = "Of 20", "Of 20"
+        OF_14 = "Of 14", "Of 14"
+        OF_28 = "Of 28", "Of 28"
+        OF_30 = "Of 30", "Of 30"
+        SUPPOSITORY = "Suppository", "Suppository"
+        PCS = "Pcs", "Pcs"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     code_no = models.CharField(max_length=50, unique=True)
     brand_name = models.CharField(max_length=255)
@@ -33,6 +54,14 @@ class Medicine(models.Model):
     department = models.ForeignKey("Department", on_delete=models.SET_NULL, null=True)
     attachment = models.FileField(upload_to="medicine_attachments/", blank=True, null=True)
 
+    # ✅ new enum field for unit
+    unit = models.CharField(
+        max_length=20,
+        choices=UnitChoices.choices,
+        default=UnitChoices.PCS,
+        editable=True  # change to False if you don't want admins to edit in admin
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
@@ -49,31 +78,28 @@ class Medicine(models.Model):
 
     @property
     def refill_count(self):
-        # Count how many times this medicine has been refilled
         return self.refills.count()
 
     def __str__(self):
         return f"{self.brand_name} ({self.code_no})"
+
+
 class Sale(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    sold_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
-    )
+    sold_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     customer_name = models.CharField(max_length=255, blank=True, null=True)
     customer_phone = models.CharField(max_length=20, blank=True, null=True)
     sale_date = models.DateTimeField(auto_now_add=True)
 
-    # 🔹 discount as percentage (0–100)
     discount_percentage = models.DecimalField(
         max_digits=5,
         decimal_places=2,
         default=0,
         validators=[MinValueValidator(0), MaxValueValidator(100)],
     )
-
-    base_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)       # before discount
-    discounted_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0) # discount value
-    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)      # after discount
+    base_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    discounted_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     discounted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -96,52 +122,29 @@ class Sale(models.Model):
     def __str__(self):
         return f"Sale {self.id} - {self.customer_name or 'Walk-in Customer'}"
 
+
 class SaleItem(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="items")
     medicine = models.ForeignKey(Medicine, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
-    price = models.DecimalField(max_digits=12, decimal_places=2)  # snapshot of price at sale time
+    price = models.DecimalField(max_digits=12, decimal_places=2)
 
     @property
     def total_price(self):
         return self.price * self.quantity
-    
+
     def __str__(self):
         return f"{self.medicine.brand_name} x {self.quantity}"
-        
 
 
-# class SaleItem(models.Model):
-#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-#     sale = models.ForeignKey(Sale, related_name="items", on_delete=models.CASCADE)
-#     medicine = models.ForeignKey("Medicine", on_delete=models.CASCADE)
-#     quantity = models.PositiveIntegerField()
-#     price = models.DecimalField(max_digits=12, decimal_places=2)  # snapshot of medicine price
-#     subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-
-#     def save(self, *args, **kwargs):
-#         if self.pk is None:  # new item
-#             if self.medicine.stock < self.quantity:
-#                 raise ValueError("Not enough stock")
-#             self.medicine.stock -= self.quantity
-#             self.medicine.save()
-
-#         self.subtotal = self.price * self.quantity
-#         super().save(*args, **kwargs)
-
-#     def __str__(self):
-#         return f"{self.medicine.brand_name} x {self.quantity}"
 def today():
     return now().date()
 
 
 class Refill(models.Model):
-    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    medicine = models.ForeignKey(
-        "Medicine", on_delete=models.CASCADE, related_name="refills"
-    )
+    medicine = models.ForeignKey("Medicine", on_delete=models.CASCADE, related_name="refills")
     department = models.ForeignKey("Department", on_delete=models.SET_NULL, null=True)
 
     batch_no = models.CharField(max_length=100)
@@ -152,11 +155,9 @@ class Refill(models.Model):
     )
     quantity = models.PositiveIntegerField(validators=[MinValueValidator(1)])
 
-    refill_date = models.DateField(default=today)  # ✅ returns date object, no error
+    refill_date = models.DateField(default=today)
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
-    )
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
         return f"Refill for {self.medicine.brand_name} (Batch {self.batch_no})"

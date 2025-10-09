@@ -28,9 +28,10 @@ class MedicineViewSet(viewsets.ModelViewSet):
     serializer_class = MedicineSerializer
     pagination_class = CustomPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['department']
-    search_fields = ['code_no','brand_name','generic_name']
+    filterset_fields = ['department', 'unit']  # ✅ added unit filter
+    search_fields = ['code_no','brand_name','generic_name','unit']  # ✅ searchable
     ordering_fields = ['expire_date','price','stock']
+
 
 
    # ---------------- BULK CREATE ----------------

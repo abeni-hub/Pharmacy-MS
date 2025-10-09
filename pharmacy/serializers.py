@@ -1,21 +1,27 @@
 from rest_framework import serializers
-from .models import Medicine, Sale, Department , Refill , SaleItem
+from .models import Medicine, Sale, Department, Refill, SaleItem
 from decimal import Decimal
+
 
 class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
         fields = ['id', 'code', 'name']
 
+
 class MedicineSerializer(serializers.ModelSerializer):
     is_out_of_stock = serializers.SerializerMethodField()
     is_expired = serializers.SerializerMethodField()
     is_nearly_expired = serializers.SerializerMethodField()
-    refill_count = serializers.SerializerMethodField()   # ✅ added here
+    refill_count = serializers.SerializerMethodField()
+    
+    # ✅ show both value and label for unit
+    unit_display = serializers.CharField(source='get_unit_display', read_only=True)
 
     class Meta:
         model = Medicine
-        fields = '__all__'
+        fields = '__all__'  # includes 'unit'
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
     def get_is_out_of_stock(self, obj):
         return obj.is_out_of_stock()
@@ -25,14 +31,10 @@ class MedicineSerializer(serializers.ModelSerializer):
 
     def get_is_nearly_expired(self, obj):
         return obj.is_nearly_expired()
-    
-    def get_refill_count(self, obj):   # ✅ this now calls your property
+
+    def get_refill_count(self, obj):
         return obj.refill_count
-    
-class SaleItemSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SaleItem
-        fields = ["id", "medicine", "quantity", "price", "subtotal"]
+
 
 class SaleItemSerializer(serializers.ModelSerializer):
     medicine_name = serializers.CharField(source="medicine.brand_name", read_only=True)
@@ -107,10 +109,8 @@ class SaleSerializer(serializers.ModelSerializer):
         items_data = validated_data.pop("items", None)
         user = self.context["request"].user
 
-        # 🔹 update who last applied discount
         instance.discounted_by = user
 
-        # update other fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
@@ -139,7 +139,6 @@ class SaleSerializer(serializers.ModelSerializer):
                 sale_item = SaleItem.objects.create(sale=instance, **item_data)
                 subtotal += sale_item.quantity * sale_item.price
         else:
-            # recalc from existing items
             subtotal = sum(
                 Decimal(item.quantity) * item.price for item in instance.items.all()
             )
@@ -152,10 +151,13 @@ class SaleSerializer(serializers.ModelSerializer):
         instance.save()
 
         return instance
+
+
 class RefillSerializer(serializers.ModelSerializer):
     medicine_name = serializers.CharField(source="medicine.brand_name", read_only=True)
     department_name = serializers.CharField(source="department.name", read_only=True)
     created_by_username = serializers.CharField(source="created_by.username", read_only=True)
+
     class Meta:
         model = Refill
         fields = [
