@@ -62,6 +62,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "customer_name",
             "customer_phone",
             "sale_date",
+            "payment_method",
             "discount_percentage",
             "base_price",
             "discounted_amount",
