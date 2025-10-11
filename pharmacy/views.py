@@ -132,8 +132,8 @@ class SaleViewSet(viewsets.ModelViewSet):
     search_fields = ["customer_name", "customer_phone"]
     ordering_fields = ["sale_date", "total_amount"]
 
-    def perform_create(self, serializer):
-        serializer.save(sold_by=self.request.user)
+    # ✅ Remove perform_create() (it causes double deduction)
+    # serializer already sets sold_by and discounted_by
 
     @action(detail=True, methods=["get"])
     def receipt(self, request, pk=None):
@@ -154,12 +154,11 @@ class SaleViewSet(viewsets.ModelViewSet):
                 "base_price": str(subtotal),
                 "discount_percentage": str(sale.discount_percentage),
                 "discount_amount": str(discount_amount),
-                "discounted_by": sale.sold_by.username if sale.sold_by else None,
+                "discounted_by": sale.discounted_by.username if sale.discounted_by else None,
                 "final_total": str(sale.total_amount),
                 "items": serializer.data["items"],
             }
         })
-
 
 class DashboardViewSet(viewsets.ViewSet):
     """
