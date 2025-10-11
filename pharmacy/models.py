@@ -51,6 +51,8 @@ class Medicine(models.Model):
     )
     stock = models.IntegerField(default=0)
     low_stock_threshold = models.IntegerField(default=10)
+    company_name = models.CharField(max_length=255, blank=True, null=True)
+    FSNO = models.IntegerField(blank=True, null=True)
     department = models.ForeignKey("Department", on_delete=models.SET_NULL, null=True)
     attachment = models.FileField(upload_to="medicine_attachments/", blank=True, null=True)
 
@@ -85,11 +87,22 @@ class Medicine(models.Model):
 
 
 class Sale(models.Model):
+    PAYMENT_METHOD_CHOICES = [
+        ('cash', 'Cash'),
+        ('transfer', 'Bank Transfer'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sold_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     customer_name = models.CharField(max_length=255, blank=True, null=True)
     customer_phone = models.CharField(max_length=20, blank=True, null=True)
     sale_date = models.DateTimeField(auto_now_add=True)
+
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default='cash',
+    )
 
     discount_percentage = models.DecimalField(
         max_digits=5,
@@ -121,6 +134,7 @@ class Sale(models.Model):
 
     def __str__(self):
         return f"Sale {self.id} - {self.customer_name or 'Walk-in Customer'}"
+
 
 
 class SaleItem(models.Model):
