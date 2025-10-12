@@ -11,6 +11,7 @@ from rest_framework import status
 from django.db.models import Sum, Count , F , Avg
 from django.utils.timezone import now 
 from .pagination import CustomPagination
+from django.db.models.functions import TruncDate
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
@@ -175,16 +176,20 @@ class DashboardViewSet(viewsets.ViewSet):
         # --- Sales summaries ---
         today_sales_qty = (
             SaleItem.objects.filter(sale__sale_date__date=today)
-            .aggregate(total=Sum("quantity"))["total"] or 0
+            .aggregate(total=Sum("quantity"))
+            .get("total") or 0
         )
-        total_sales_qty = SaleItem.objects.aggregate(total=Sum("quantity"))["total"] or 0
+        total_sales_qty = (
+            SaleItem.objects.aggregate(total=Sum("quantity")).get("total") or 0
+        )
 
         revenue_today = (
             Sale.objects.filter(sale_date__date=today)
-            .aggregate(revenue=Sum("total_amount"))["revenue"] or 0
+            .aggregate(revenue=Sum("total_amount"))
+            .get("revenue") or 0
         )
         total_revenue = (
-            Sale.objects.aggregate(revenue=Sum("total_amount"))["revenue"] or 0
+            Sale.objects.aggregate(revenue=Sum("total_amount")).get("revenue") or 0
         )
 
         # --- Top 5 selling medicines ---
@@ -226,17 +231,17 @@ class DashboardViewSet(viewsets.ViewSet):
         near_expiry_threshold = today + timedelta(days=30)
 
         # --- Revenue and Transactions ---
-        total_revenue = Sale.objects.aggregate(total=Sum("total_amount"))["total"] or 0
+        total_revenue = Sale.objects.aggregate(total=Sum("total_amount")).get("total") or 0
         total_transactions = Sale.objects.count()
-        avg_order_value = Sale.objects.aggregate(avg=Avg("total_amount"))["avg"] or 0
-        inventory_value = Medicine.objects.aggregate(
-            total=Sum(F("stock") * F("price"))
-        )["total"] or 0
+        avg_order_value = Sale.objects.aggregate(avg=Avg("total_amount")).get("avg") or 0
+        inventory_value = (
+            Medicine.objects.aggregate(total=Sum(F("stock") * F("price"))).get("total") or 0
+        )
 
         # --- Sales Trend (last 7 days) ---
         sales_trend = (
             Sale.objects.filter(sale_date__date__gte=last_week)
-            .extra(select={"day": "date(sale_date)"})
+            .annotate(day=TruncDate("sale_date"))
             .values("day")
             .annotate(total_sales=Sum("total_amount"))
             .order_by("day")
@@ -267,16 +272,19 @@ class DashboardViewSet(viewsets.ViewSet):
         week_sales = (
             Sale.objects.filter(sale_date__date__gte=last_week)
             .aggregate(total=Sum("total_amount"))
-        )["total"] or 0
+            .get("total") or 0
+        )
         week_transactions = Sale.objects.filter(sale_date__date__gte=last_week).count()
 
         # --- Inventory Health ---
         total_products = Medicine.objects.count()
 
-        # --- Performance Metrics ---
-        profit_margin = 24.5  # Example static placeholder
-        inventory_turnover = total_revenue / inventory_value if inventory_value > 0 else 0
-        customer_satisfaction = 94.2  # Example static placeholder
+        # --- Performance Metrics (placeholders or can be computed later) ---
+        profit_margin = 24.5  # % placeholder
+        inventory_turnover = (
+            float(total_revenue) / float(inventory_value) if inventory_value > 0 else 0
+        )
+        customer_satisfaction = 94.2  # % placeholder
 
         return Response({
             "summary": {
@@ -296,7 +304,7 @@ class DashboardViewSet(viewsets.ViewSet):
             "weekly_summary": {
                 "week_sales": week_sales,
                 "transactions": week_transactions,
-                "new_customers": 28,  # Replace if customer model exists
+                "new_customers": 28,  # Replace if Customer model exists
             },
             "inventory_health": {
                 "total_products": total_products,
