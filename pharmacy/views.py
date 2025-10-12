@@ -123,7 +123,7 @@ class RefillViewSet(viewsets.ModelViewSet):
         medicine.save()
 
 class SaleViewSet(viewsets.ModelViewSet):
-    queryset = Sale.objects.all().prefetch_related("items")
+    queryset = Sale.objects.all().prefetch_related("items", "items__medicine")
     serializer_class = SaleSerializer
     pagination_class = CustomPagination
     permission_classes = [permissions.IsAuthenticated]
@@ -132,26 +132,26 @@ class SaleViewSet(viewsets.ModelViewSet):
     search_fields = ["customer_name", "customer_phone"]
     ordering_fields = ["sale_date", "total_amount"]
 
-    # ✅ Remove perform_create() (it causes double deduction)
-    # serializer already sets sold_by and discounted_by
-
     @action(detail=True, methods=["get"])
     def receipt(self, request, pk=None):
         """Generate a detailed receipt for a sale"""
         sale = self.get_object()
         serializer = self.get_serializer(sale)
 
-        subtotal = sum(item["quantity"] * float(item["price"]) for item in serializer.data["items"])
-        discount_amount = subtotal - float(sale.total_amount)
+        subtotal = sum(
+            Decimal(item["quantity"]) * Decimal(item["price"])
+            for item in serializer.data["items"]
+        )
+        discount_amount = subtotal - sale.total_amount
 
         return Response({
             "receipt": {
-                "sale_id": sale.id,
+                "sale_id": str(sale.id),
                 "customer": sale.customer_name or "Walk-in Customer",
                 "phone": sale.customer_phone or "-",
                 "sold_by": sale.sold_by.username if sale.sold_by else None,
                 "date": sale.sale_date,
-                "base_price": str(subtotal),
+                "base_price": str(sale.base_price),
                 "discount_percentage": str(sale.discount_percentage),
                 "discount_amount": str(discount_amount),
                 "discounted_by": sale.discounted_by.username if sale.discounted_by else None,
@@ -159,7 +159,6 @@ class SaleViewSet(viewsets.ModelViewSet):
                 "items": serializer.data["items"],
             }
         })
-
 class DashboardViewSet(viewsets.ViewSet):
     """
     Dashboard API: Provides stock, sales, and department summaries

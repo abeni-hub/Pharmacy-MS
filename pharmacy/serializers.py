@@ -49,7 +49,8 @@ class SaleItemSerializer(serializers.ModelSerializer):
 
 
 class SaleSerializer(serializers.ModelSerializer):
-    items = SaleItemSerializer(many=True, required=False)
+    # ✅ Make items read_only so DRF doesn't try to assign them automatically
+    items = SaleItemSerializer(many=True, read_only=True)
     base_price = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     discounted_amount = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     discounted_by = serializers.CharField(source="discounted_by.username", read_only=True)
@@ -72,88 +73,59 @@ class SaleSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        items_data = validated_data.pop("items", [])
+        # ✅ get the items from initial_data (manual)
+        items_data = self.initial_data.get("items", [])
         user = self.context["request"].user
 
-        # assign user info
-        validated_data["sold_by"] = user
-        validated_data["discounted_by"] = user
+        sale = Sale.objects.create(
+            sold_by=user,
+            discounted_by=user,
+            **validated_data,
+        )
 
-        sale = Sale.objects.create(**validated_data)
-        subtotal = Decimal(0)
+        # ✅ create SaleItems manually
+        for item in items_data:
+            SaleItem.objects.create(
+                sale=sale,
+                medicine_id=item["medicine"],
+                quantity=item["quantity"],
+                price=item["price"],
+            )
 
-        # ✅ Stock deduction done ONCE here
-        for item_data in items_data:
-            medicine = item_data["medicine"]
-            qty = item_data["quantity"]
-
-            # check stock availability
-            if medicine.stock < qty:
-                raise serializers.ValidationError(
-                    f"Not enough stock for {medicine.brand_name}. Available: {medicine.stock}"
-                )
-
-            # decrease stock once per sale
-            medicine.stock -= qty
-            medicine.save(update_fields=["stock"])
-
-            sale_item = SaleItem.objects.create(sale=sale, **item_data)
-            subtotal += Decimal(qty) * sale_item.price
-
-        # apply discount
-        discount_factor = (Decimal(100) - sale.discount_percentage) / Decimal(100)
-        sale.base_price = subtotal
-        sale.total_amount = subtotal * discount_factor
-        sale.discounted_amount = subtotal - sale.total_amount
-        sale.save(update_fields=["base_price", "total_amount", "discounted_amount"])
+        # ✅ calculate totals after items created
+        sale.calculate_totals()
+        sale.save(update_fields=["base_price", "discounted_amount", "total_amount"])
 
         return sale
 
     def update(self, instance, validated_data):
-        items_data = validated_data.pop("items", None)
+        items_data = self.initial_data.get("items", None)
         user = self.context["request"].user
         instance.discounted_by = user
 
-        # update main sale fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        subtotal = Decimal(0)
+        # Handle sale items update manually
         if items_data is not None:
-            # rollback stock for previous items
+            # First restore stock for all existing items
             for old_item in instance.items.all():
                 old_item.medicine.stock += old_item.quantity
                 old_item.medicine.save(update_fields=["stock"])
-            instance.items.all().delete()
+                old_item.delete()
 
-            # add new sale items
-            for item_data in items_data:
-                medicine = item_data["medicine"]
-                qty = item_data["quantity"]
+            # Create new sale items (stock will be deducted in SaleItem.save())
+            for item in items_data:
+                SaleItem.objects.create(
+                    sale=instance,
+                    medicine_id=item["medicine"],
+                    quantity=item["quantity"],
+                    price=item["price"],
+                )
 
-                if medicine.stock < qty:
-                    raise serializers.ValidationError(
-                        f"Not enough stock for {medicine.brand_name}. Available: {medicine.stock}"
-                    )
-
-                medicine.stock -= qty
-                medicine.save(update_fields=["stock"])
-
-                sale_item = SaleItem.objects.create(sale=instance, **item_data)
-                subtotal += Decimal(qty) * sale_item.price
-        else:
-            subtotal = sum(
-                Decimal(item.quantity) * item.price for item in instance.items.all()
-            )
-
-        # recalculate totals
-        discount_factor = (Decimal(100) - instance.discount_percentage) / Decimal(100)
-        instance.base_price = subtotal
-        instance.total_amount = subtotal * discount_factor
-        instance.discounted_amount = subtotal - instance.total_amount
-        instance.save(update_fields=["base_price", "total_amount", "discounted_amount"])
-
+        instance.calculate_totals()
+        instance.save(update_fields=["base_price", "discounted_amount", "total_amount"])
         return instance
 class RefillSerializer(serializers.ModelSerializer):
     medicine_name = serializers.CharField(source="medicine.brand_name", read_only=True)
