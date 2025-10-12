@@ -38,7 +38,7 @@ class Medicine(models.Model):
         PCS = "Pcs", "Pcs"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    code_no = models.CharField(max_length=50, unique=True)
+    #code_no = models.CharField(max_length=50, unique=True)
     brand_name = models.CharField(max_length=255)
     generic_name = models.CharField(max_length=255, blank=True, null=True)
     batch_no = models.CharField(max_length=100, blank=True, null=True)
@@ -83,36 +83,32 @@ class Medicine(models.Model):
         return self.refills.count()
 
     def __str__(self):
-        return f"{self.brand_name} ({self.code_no})"
+        return f"{self.brand_name} - {self.department.name if self.department else 'No Dept'}"
 
+
+
+PAYMENT_METHOD_CHOICES = [
+    ('cash', 'Cash'),
+    ('transfer', 'Bank Transfer'),
+]
 
 class Sale(models.Model):
-    PAYMENT_METHOD_CHOICES = [
-        ('cash', 'Cash'),
-        ('transfer', 'Bank Transfer'),
-    ]
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    sold_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True
-    )
+    sold_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     customer_name = models.CharField(max_length=255, blank=True, null=True)
     customer_phone = models.CharField(max_length=20, blank=True, null=True)
     sale_date = models.DateTimeField(auto_now_add=True)
 
-    payment_method = models.CharField(
-        max_length=20, choices=PAYMENT_METHOD_CHOICES, default='cash'
-    )
+    payment_method = models.CharField(max_length=20, choices=PAYMENT_METHOD_CHOICES, default='cash')
 
     discount_percentage = models.DecimalField(
         max_digits=5,
         decimal_places=2,
-        default=0,
-        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        default=0
     )
-    base_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    discounted_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    base_price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    discounted_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
 
     discounted_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -122,60 +118,19 @@ class Sale(models.Model):
         related_name="discounted_sales",
     )
 
-    def calculate_totals(self):
-        subtotal = sum(Decimal(item.quantity) * item.price for item in self.items.all())
-        self.base_price = subtotal
-        self.discounted_amount = (subtotal * self.discount_percentage) / Decimal(100)
-        self.total_amount = subtotal - self.discounted_amount
-
-    # def save(self, *args, **kwargs):
-    #     self.calculate_totals()
-    #     super().save(*args, **kwargs)
-
     def __str__(self):
-        return f"Sale {self.id} - {self.customer_name or 'Walk-in Customer'}"
-
+        return f"Sale {self.id} by {self.sold_by or 'Unknown'} on {self.sale_date}"
 
 class SaleItem(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="items")
-    medicine = models.ForeignKey("Medicine", on_delete=models.CASCADE)
+    medicine = models.ForeignKey("Medicine", on_delete=models.PROTECT)
     quantity = models.PositiveIntegerField()
-    price = models.DecimalField(max_digits=12, decimal_places=2)
-
-    @property
-    def total_price(self):
-        return self.price * self.quantity
-
-    def save(self, *args, **kwargs):
-        is_new = self.pk is None
-        
-        if is_new:
-            # New item - deduct quantity from stock
-            self.medicine.stock -= self.quantity
-            self.medicine.save(update_fields=["stock"])
-        else:
-            # Existing item - calculate difference and adjust stock
-            try:
-                old_item = SaleItem.objects.get(pk=self.pk)
-                diff = self.quantity - old_item.quantity
-                self.medicine.stock -= diff
-                self.medicine.save(update_fields=["stock"])
-            except SaleItem.DoesNotExist:
-                # Fallback for edge case
-                self.medicine.stock -= self.quantity
-                self.medicine.save(update_fields=["stock"])
-        
-        super().save(*args, **kwargs)
-
-    def delete(self, *args, **kwargs):
-        # Restore stock when item is deleted
-        self.medicine.stock += self.quantity
-        self.medicine.save(update_fields=["stock"])
-        super().delete(*args, **kwargs)
+    # price saved at sale time (unit price)
+    price = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0.00"))
 
     def __str__(self):
-        return f"{self.medicine.brand_name} x {self.quantity}"
+        return f"{self.quantity} x {self.medicine.brand_name} @ {self.price}"
 
 def today():
     return now().date()

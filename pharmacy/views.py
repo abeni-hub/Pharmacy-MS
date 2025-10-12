@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from django.utils import timezone
 from rest_framework.decorators import action
 from datetime import timedelta
+from django.db import transaction
 from rest_framework import status
 from django.db.models import Sum, Count , F , Avg
 from django.utils.timezone import now 
@@ -29,17 +30,13 @@ class MedicineViewSet(viewsets.ModelViewSet):
     pagination_class = CustomPagination
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['department', 'unit']  # ✅ added unit filter
-    search_fields = ['code_no','brand_name','generic_name','unit']  # ✅ searchable
+    search_fields = ['brand_name','generic_name','unit']  # ✅ searchable
     ordering_fields = ['expire_date','price','stock']
 
 
 
    # ---------------- BULK CREATE ----------------
     def create(self, request, *args, **kwargs):
-        """
-        If request.data is a list → bulk create.
-        Otherwise → default single create.
-        """
         if isinstance(request.data, list):
             serializer = self.get_serializer(data=request.data, many=True)
             serializer.is_valid(raise_exception=True)
@@ -48,26 +45,35 @@ class MedicineViewSet(viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
     def perform_bulk_create(self, serializer):
-        serializer.save()
+        serializer.save(created_by=self.request.user)
 
-    # ---------------- BULK UPDATE ----------------
+    # ---------------- BULK UPDATE (by id) ----------------
     @action(detail=False, methods=['put'], url_path="bulk_update")
     def bulk_update(self, request):
         """
-        Update multiple medicines at once using their `code_no`.
+        Update multiple medicines at once using their `id`.
+        Request body: list of objects each containing 'id' and the fields to update.
         """
-        serializer = self.get_serializer(data=request.data, many=True)
-        serializer.is_valid(raise_exception=True)
+        if not isinstance(request.data, list):
+            return Response({"detail": "Expected a list of items for bulk_update."}, status=400)
 
-        updated_items = []
-        for item in serializer.validated_data:
-            code_no = item.get("code_no")
-            if not code_no:
+        updated_ids = []
+        for item in request.data:
+            mid = item.get("id")
+            if not mid:
                 continue
-            Medicine.objects.filter(code_no=code_no).update(**item)
-            updated_items.append(code_no)
-
-        return Response({"updated": updated_items}, status=200)
+            try:
+                med = Medicine.objects.get(id=mid)
+            except Medicine.DoesNotExist:
+                continue
+            # do not allow updating created_by via this endpoint
+            for k, v in item.items():
+                if k == "id":
+                    continue
+                setattr(med, k, v)
+            med.save()
+            updated_ids.append(str(mid))
+        return Response({"updated": updated_ids}, status=200)
 
     # ---------------- CUSTOM ACTIONS ----------------
     @action(detail=False, methods=['get'])
@@ -100,11 +106,12 @@ class MedicineViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def stock(self, request):
         medicines = Medicine.objects.all()
-        data = [{"code_no": m.code_no, "brand_name": m.brand_name, "stock": m.stock} for m in medicines]
+        data = [{"id": str(m.id), "brand_name": m.brand_name, "department": {"code": m.department.code if m.department else None, "name": m.department.name if m.department else None}, "stock": m.stock} for m in medicines]
         return Response(data)
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+
 
 class RefillViewSet(viewsets.ModelViewSet):
     queryset = Refill.objects.all().order_by("-refill_date")
@@ -122,43 +129,30 @@ class RefillViewSet(viewsets.ModelViewSet):
         medicine.price = refill.price  # Optionally update current price
         medicine.save()
 
+# ---------------- SALE VIEWSET ----------------
 class SaleViewSet(viewsets.ModelViewSet):
-    queryset = Sale.objects.all().prefetch_related("items", "items__medicine")
+    queryset = Sale.objects.all().select_related("sold_by", "discounted_by")
     serializer_class = SaleSerializer
-    pagination_class = CustomPagination
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = CustomPagination
 
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ["customer_name", "customer_phone"]
-    ordering_fields = ["sale_date", "total_amount"]
+    def get_serializer_context(self):
+        # ensure serializer has request in context (we use request.user inside serializer)
+        ctx = super().get_serializer_context()
+        ctx.update({"request": self.request})
+        return ctx
 
-    @action(detail=True, methods=["get"])
-    def receipt(self, request, pk=None):
-        """Generate a detailed receipt for a sale"""
-        sale = self.get_object()
-        serializer = self.get_serializer(sale)
-
-        subtotal = sum(
-            Decimal(item["quantity"]) * Decimal(item["price"])
-            for item in serializer.data["items"]
-        )
-        discount_amount = subtotal - sale.total_amount
-
-        return Response({
-            "receipt": {
-                "sale_id": str(sale.id),
-                "customer": sale.customer_name or "Walk-in Customer",
-                "phone": sale.customer_phone or "-",
-                "sold_by": sale.sold_by.username if sale.sold_by else None,
-                "date": sale.sale_date,
-                "base_price": str(sale.base_price),
-                "discount_percentage": str(sale.discount_percentage),
-                "discount_amount": str(discount_amount),
-                "discounted_by": sale.discounted_by.username if sale.discounted_by else None,
-                "final_total": str(sale.total_amount),
-                "items": serializer.data["items"],
-            }
-        })
+    def create(self, request, *args, **kwargs):
+        """
+        Single, atomic save call. Do NOT call serializer.save() more than once.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            sale = serializer.save()
+        # re-serialize the saved sale for output (includes items, totals)
+        out_serializer = self.get_serializer(sale)
+        return Response(out_serializer.data, status=status.HTTP_201_CREATED)
 class DashboardViewSet(viewsets.ViewSet):
     """
     Dashboard API: Provides stock, sales, and department summaries
