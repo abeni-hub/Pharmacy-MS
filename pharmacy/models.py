@@ -53,7 +53,7 @@ class Medicine(models.Model):
     low_stock_threshold = models.IntegerField(default=10)
     company_name = models.CharField(max_length=255, blank=True, null=True)
     FSNO = models.CharField(blank=True, null=True)
-    department = models.ForeignKey("Department", on_delete=models.SET_NULL, null=True)
+    department = models.ForeignKey(Department,on_delete=models.SET_NULL,null=True, blank=True,related_name='medicines')
     attachment = models.FileField(upload_to="medicine_attachments/", blank=True, null=True)
 
     # ✅ new enum field for unit

@@ -19,24 +19,26 @@ class DepartmentViewSet(viewsets.ModelViewSet):
     serializer_class = DepartmentSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['code','name']  # ✅ customize fields as per your model
-    search_fields = ['code','name']             # ✅ searchable fields
-    ordering_fields = ['name', 'created_at', 'id']      # ✅ sortable fields
-    ordering = ['-id']                                  # default order
+    filterset_fields = ['code','name']
+    search_fields = ['code','name']
+    ordering_fields = ['name', 'id']
+    ordering = ['-id']
     pagination_class = CustomPagination
-    
+
+
 class MedicineViewSet(viewsets.ModelViewSet):
     queryset = Medicine.objects.all()
     serializer_class = MedicineSerializer
     pagination_class = CustomPagination
+    permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['department', 'unit']  # ✅ added unit filter
-    search_fields = ['brand_name','generic_name','unit']  # ✅ searchable
+
+    # removed 'code_no' because you said you'll remove it from model
+    filterset_fields = ['department', 'unit']
+    search_fields = ['brand_name', 'generic_name', 'unit']
     ordering_fields = ['expire_date','price','stock']
 
-
-
-   # ---------------- BULK CREATE ----------------
+    # ---------------- BULK CREATE ----------------
     def create(self, request, *args, **kwargs):
         if isinstance(request.data, list):
             serializer = self.get_serializer(data=request.data, many=True)
@@ -121,37 +123,44 @@ class RefillViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        # Automatically set the creator and update medicine stock
         refill = serializer.save(created_by=self.request.user)
 
-        # Update medicine stock when refilled
         medicine = refill.medicine
         medicine.stock += refill.quantity
-        medicine.price = refill.price  # Optionally update current price
+        medicine.price = refill.price
         medicine.save()
+
 
 # ---------------- SALE VIEWSET ----------------
 class SaleViewSet(viewsets.ModelViewSet):
-    queryset = Sale.objects.all().select_related("sold_by", "discounted_by")
+    queryset = Sale.objects.all().order_by("-sale_date")
     serializer_class = SaleSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = CustomPagination
 
     def get_serializer_context(self):
-        # ensure serializer has request in context (we use request.user inside serializer)
         ctx = super().get_serializer_context()
         ctx.update({"request": self.request})
         return ctx
 
     def create(self, request, *args, **kwargs):
         """
-        Single, atomic save call. Do NOT call serializer.save() more than once.
+        Payload example:
+        {
+          "customer_name": "John Doe",
+          "customer_phone": "0911...",
+          "payment_method": "cash",
+          "discount_percentage": "5.0",
+          "input_items": [
+            { "medicine": "uuid-of-medicine-1", "quantity": 2 },
+            { "medicine": "uuid-of-medicine-2", "quantity": 1, "price": "15.50" }
+          ]
+        }
         """
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
             sale = serializer.save()
-        # re-serialize the saved sale for output (includes items, totals)
         out_serializer = self.get_serializer(sale)
         return Response(out_serializer.data, status=status.HTTP_201_CREATED)
 class DashboardViewSet(viewsets.ViewSet):
